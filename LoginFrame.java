@@ -1,8 +1,10 @@
 import javax.swing.*;
+import java.util.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.util.ArrayList;
-import java.util.List;
+import java.awt.GridLayout;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 
 class User {
     private String id;
@@ -178,14 +180,15 @@ class AddProductFrame extends JFrame implements ActionListener {
     }
     
     private void openBuyProductsFrame() {
-        BuyProductsFrame buyProductsFrame = new BuyProductsFrame(getProductList(), this);
-        buyProductsFrame.addWindowListener(new java.awt.event.WindowAdapter() {
-            @Override
-            public void windowClosing(java.awt.event.WindowEvent windowEvent) {
-                // Handle window closing event if needed
-            }
-        });
-    }
+    BuyProductsFrame buyProductsFrame = new BuyProductsFrame(getProductList(), this);
+    buyProductsFrame.addWindowListener(new java.awt.event.WindowAdapter() {
+        @Override
+        public void windowClosing(java.awt.event.WindowEvent windowEvent) {
+            // Handle window closing event if needed
+        }
+    });
+}
+
     
     
 
@@ -204,16 +207,6 @@ class AddProductFrame extends JFrame implements ActionListener {
         }
     }
 
-    private void openConfirmationFrame() {
-        ConfirmationFrame confirmationFrame = new ConfirmationFrame(getProductList());
-        confirmationFrame.addWindowListener(new java.awt.event.WindowAdapter() {
-            @Override
-            public void windowClosing(java.awt.event.WindowEvent windowEvent) {
-                // Handle window closing event if needed
-            }
-        });
-    }
-
     public List<Product> getProductList() {
         return productList;
     }
@@ -222,11 +215,12 @@ class AddProductFrame extends JFrame implements ActionListener {
 class BuyProductsFrame extends JFrame implements ActionListener {
     private List<Product> productList;
     private AddProductFrame addProductFrame;
-    private List<JCheckBox> checkBoxes;
+    private List<JSpinner> quantitySpinners;
     private JTextField transactionIdField;
     private JTextField customerIdField;
     private JTextField totalPriceField;
     private JButton buyButton;
+    private JButton generateIdButton;
 
     public BuyProductsFrame(List<Product> productList, AddProductFrame addProductFrame) {
         super("Buy Products");
@@ -235,18 +229,34 @@ class BuyProductsFrame extends JFrame implements ActionListener {
         this.addProductFrame = addProductFrame;
 
         // Create components for selecting products and quantities
-        checkBoxes = new ArrayList<>();
+        quantitySpinners = new java.util.ArrayList<>();
+        JPanel productPanel = new JPanel(new GridLayout(productList.size(), 2));
+
         for (Product product : productList) {
-            JCheckBox checkBox = new JCheckBox(product.getProductName());
-            checkBox.addActionListener(this); // Add action listener to each checkbox
-            checkBoxes.add(checkBox);
+            JLabel productLabel = new JLabel(product.getProductName());
+            JSpinner quantitySpinner = new JSpinner(new SpinnerNumberModel(0, 0, product.getQuantity(), 1));
+            productPanel.add(productLabel);
+            productPanel.add(quantitySpinner);
+            quantitySpinners.add(quantitySpinner);
+            
+            quantitySpinner.addChangeListener(new ChangeListener() {
+                @Override
+                public void stateChanged(ChangeEvent e) {
+                    updateTotalPrice();
+                }
+            });
         }
-
-        JPanel checkBoxPanel = new JPanel();
-        for (JCheckBox checkBox : checkBoxes) {
-            checkBoxPanel.add(checkBox);
-        }
-
+        // Create a random transaction ID
+        String randomTransactionId = generateRandomTransactionId();
+        
+        // Initialize transactionIdField with the random transaction ID
+        transactionIdField = new JTextField(randomTransactionId);
+        transactionIdField.setEditable(false); // Make it non-editable
+        
+        // Create "Generate ID" button
+        generateIdButton = new JButton("Generate ID");
+        generateIdButton.addActionListener(this);
+        
         transactionIdField = new JTextField();
         customerIdField = new JTextField();
         totalPriceField = new JTextField();
@@ -258,9 +268,10 @@ class BuyProductsFrame extends JFrame implements ActionListener {
 
         // Add components to frame
         add(new JLabel("Products:"));
-        add(checkBoxPanel);
+        add(productPanel);
         add(new JLabel("Transaction ID:"));
         add(transactionIdField);
+        add(generateIdButton); // Add the "Generate ID" button
         add(new JLabel("Customer ID:"));
         add(customerIdField);
         add(new JLabel("Total Price:"));
@@ -278,20 +289,30 @@ class BuyProductsFrame extends JFrame implements ActionListener {
 
         updateTotalPrice(); // Calculate and display the initial total price
     }
-
+    
+    // Method to generate a random transaction ID
+    private String generateRandomTransactionId() {
+        UUID uuid = UUID.randomUUID();
+        String randomTransactionId = uuid.toString().substring(0, 8); // Use the first 8 characters
+        return randomTransactionId;
+    }
+    
     private void updateTotalPrice() {
         double total = 0;
-        for (int i = 0; i < checkBoxes.size(); i++) {
-            if (checkBoxes.get(i).isSelected()) {
-                total += productList.get(i).getPrice(); // Add price of 1 quantity
-            }
+        for (int i = 0; i < quantitySpinners.size(); i++) {
+            int quantity = (int) quantitySpinners.get(i).getValue();
+            total += productList.get(i).getPrice() * quantity;
         }
         totalPriceField.setText(String.valueOf(total));
     }
 
     @Override
     public void actionPerformed(ActionEvent e) {
-        if (e.getSource() == buyButton) {
+    if (e.getSource() == generateIdButton) {
+            // Generate and set a new random transaction ID
+            String randomTransactionId = generateRandomTransactionId();
+            transactionIdField.setText(randomTransactionId);
+        } else if (e.getSource() == buyButton) {
             // Perform the buying logic here
             String transactionId = transactionIdField.getText();
             String customerId = customerIdField.getText();
@@ -301,9 +322,10 @@ class BuyProductsFrame extends JFrame implements ActionListener {
                 JOptionPane.showMessageDialog(this, "Please enter transaction details.", "Incomplete Details", JOptionPane.ERROR_MESSAGE);
             } else {
                 // Deduct the quantity from the AddProductFrame for selected products
-                for (int i = 0; i < checkBoxes.size(); i++) {
-                    if (checkBoxes.get(i).isSelected()) {
-                        deductQuantity(productList.get(i).getProductName());
+                for (int i = 0; i < quantitySpinners.size(); i++) {
+                    int quantity = (int) quantitySpinners.get(i).getValue();
+                    if (quantity > 0) {
+                        deductQuantity(productList.get(i).getProductName(), quantity);
                     }
                 }
 
@@ -315,48 +337,24 @@ class BuyProductsFrame extends JFrame implements ActionListener {
                 JOptionPane.showMessageDialog(this, purchaseDetails, "Purchase Complete", JOptionPane.INFORMATION_MESSAGE);
                 dispose(); // Close the BuyProductsFrame after purchase
             }
-        } else if (checkBoxes.contains(e.getSource())) {
-            // Checkbox state changed, update total price
-            updateTotalPrice();
         }
     }
 
-    private void deductQuantity(String productName) {
+    private void deductQuantity(String productName, int quantity) {
         for (Product product : productList) {
             if (product.getProductName().equals(productName)) {
                 int currentQuantity = product.getQuantity();
-                if (currentQuantity > 0) {
-                    product.setQuantity(currentQuantity - 1); // Deduct 1 unit
+                if (currentQuantity >= quantity) {
+                    product.setQuantity(currentQuantity - quantity); // Deduct selected quantity
                     addProductFrame.updateProductListArea(); // Update the AddProductFrame
                     break;
                 } else {
-                    JOptionPane.showMessageDialog(this, "No more units available for " + productName, "Out of Stock", JOptionPane.WARNING_MESSAGE);
+                    JOptionPane.showMessageDialog(this, "Not enough units available for " + productName, "Insufficient Stock", JOptionPane.WARNING_MESSAGE);
                 }
             }
         }
     }
 }
-// class ConfirmationFrame extends JFrame {
-//     public ConfirmationFrame(List<Product> productList) {
-//         super("Confirmation");
-// 
-//         JTextArea confirmationArea = new JTextArea(20, 40);
-//         JScrollPane scrollPane = new JScrollPane(confirmationArea);
-// 
-//         StringBuilder confirmationText = new StringBuilder("Products to be confirmed:\n\n");
-//         for (Product product : productList) {
-//             confirmationText.append(product.toString()).append("---------------\n");
-//         }
-//         confirmationArea.setText(confirmationText.toString());
-// 
-//         add(scrollPane);
-// 
-//         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-//         setSize(600, 400);
-//         setLocationRelativeTo(null);
-//         setVisible(true);
-//     }
-// }
 
 class RegisterFrame extends JFrame implements ActionListener {
     private JTextField idField;
@@ -571,6 +569,7 @@ public class LoginFrame extends JFrame implements ActionListener {
     public void addRegisteredUser(User newUser) {
         registeredUsers.add(newUser);
     }
+    
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
             LoginFrame loginFrame = new LoginFrame();
